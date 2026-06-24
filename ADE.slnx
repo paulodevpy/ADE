@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="ADE.Capture/ADE.Capture.csproj" />
+  <Project Path="ADE.Console/ADE.Console.csproj" />
+  <Project Path="ADE.Core/ADE.Core.csproj" />
+  <Project Path="ADE.Reporting/ADE.Reporting.csproj" />
+  <Project Path="ADE.UI/ADE.UI.csproj" />
+</Solution>
