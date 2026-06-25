@@ -7,12 +7,12 @@ namespace ADE.UI;
 /// <summary>
 /// Interaction logic for App.xaml
 /// </summary>
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        
+
         try
         {
             var mainWindow = new MainWindow();
@@ -24,4 +24,3 @@ public partial class App : Application
         }
     }
 }
-

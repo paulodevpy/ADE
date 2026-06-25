@@ -7,6 +7,12 @@
   <ItemGroup>
     <PackageReference Include="QuestPDF" Version="2026.6.0" />
   </ItemGroup>
+	
+	<ItemGroup>
+		<Content Include="Resources\ade.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	    </Content>
+	</ItemGroup>
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>

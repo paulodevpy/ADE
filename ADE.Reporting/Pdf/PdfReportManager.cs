@@ -1,3 +1,6 @@
+using System;
+using System.IO;
+using System.Linq;
 using QuestPDF.Fluent;
 using QuestPDF.Infrastructure;
 using QuestPDF.Helpers;
@@ -6,419 +9,918 @@ namespace ADE.Reporting.Pdf;
 
 public static class PdfReportManager
 {
+    // Paleta institucional (forense/policial)
+    private const string Navy = "#1a365d";   // Azul-marinho principal
+    private const string Blue = "#2d5a87";   // Azul médio (faixas/cabeçalhos de tabela)
+    private const string Accent = "#4a90e2"; // Azul de destaque (bordas)
+    private const string SoftBlue = "#e8f4f8"; // Azul claro (caixas de destaque)
+    private const string PaleBlue = "#f0f7ff"; // Azul muito claro (faixas de seção)
+
     public static void Generate(
         ReportModel model,
         string destinationFile)
     {
-        QuestPDF.Settings.License =
-            LicenseType.Community;
+        QuestPDF.Settings.License = LicenseType.Community;
 
-        Document.Create(container =>
+        Document.Create(document =>
         {
-            container.Page(page =>
+            // ------------------------------------------------------------
+            // CAPA
+            // ------------------------------------------------------------
+
+            document.Page(page =>
             {
-                page.Margin(50);
-                page.DefaultTextStyle(x => x
-                    .FontSize(11)
-                    .FontFamily(Fonts.Calibri)
-                    .FontColor(Colors.Black)
-                    .LineHeight(1.5f));
+                page.Margin(45);
 
-                // CABEÇALHO COM GRADIENTE MELHORADO
-                page.Header().Column(column =>
-                {
-                    column.Item().Background(Colors.Blue.Darken3).Padding(25).Row(row =>
+                ComposeCover(page, model);
+            });
+
+            // ------------------------------------------------------------
+            // RELATÓRIO
+            // ------------------------------------------------------------
+
+            document.Page(page =>
+            {
+                page.Margin(40);
+
+                ComposeHeader(page, model);
+
+                ComposeFooter(page);
+
+                page.Content()
+                    .PaddingVertical(10)
+                    .Column(column =>
                     {
-                        // Logo placeholder (left side)
-                        row.ConstantItem(100).Height(100).Background(Colors.White)
-                            .AlignCenter().AlignMiddle()
-                            .Border(2).BorderColor(Colors.Grey.Lighten2).CornerRadius(8)
-                            .Column(logoCol =>
-                            {
-                                string logoPath = Path.Combine(Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory) ?? "", "ADE.UI", "Resources", "logo.png");
-                                if (!File.Exists(logoPath))
-                                {
-                                    logoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "logo.png");
-                                }
-                                if (File.Exists(logoPath))
-                                {
-                                    try
-                                    {
-                                        logoCol.Item().Image(logoPath);
-                                    }
-                                    catch
-                                    {
-                                        logoCol.Item().Text("ADE").FontSize(32).Bold().FontColor(Colors.Blue.Darken3);
-                                    }
-                                }
-                                else
-                                {
-                                    logoCol.Item().Text("ADE").FontSize(32).Bold().FontColor(Colors.Blue.Darken3);
-                                }
-                            });
+                        ComposeExecutiveSummary(column, model);
 
-                        // Title section (center)
-                        row.RelativeItem().PaddingLeft(25).Column(col =>
+                        ComposeContent(column, model);
+                    });
+            });
+           
+        }).GeneratePdf(destinationFile);
+    }
+
+    private static void ComposeCover(
+        PageDescriptor page,
+        ReportModel model)
+    {
+        page.Content()
+            .PaddingTop(40)
+            .Column(column =>
+            {
+                column.Item()
+                    .AlignCenter()
+                    .Width(120)
+                    .Height(120)
+                    .Element(container =>
+                    {
+                        var logo = ResolveLogoPath();
+
+                        if (!string.IsNullOrWhiteSpace(logo))
                         {
-                            col.Item().Text("RELATÓRIO DE CAPTURA TÉCNICA").FontSize(28).Bold().FontColor(Colors.White);
-                            col.Item().PaddingTop(12).Text($"Identificador: {model.CaseId}").FontSize(16).FontColor(Colors.Grey.Lighten3);
-                            col.Item().Text($"Coleta de provas digitais com validade jurídica").FontSize(14).FontColor(Colors.Grey.Lighten3);
-                            col.Item().PaddingTop(12).Text($"Responsável: {model.OfficerName} | {model.UnitName}").FontSize(13).FontColor(Colors.White);
-                        });
+                            container.Image(logo).FitArea();
+                        }
                     });
 
-                    column.Item().PaddingTop(25).Row(row =>
+                column.Item()
+                    .PaddingTop(25)
+                    .AlignCenter()
+                    .Text("ATA DIGITAL DE EVIDÊNCIAS")
+                    .FontSize(24)
+                    .Bold()
+                    .FontColor(Navy);
+
+                column.Item()
+                    .PaddingTop(6)
+                    .AlignCenter()
+                    .Text("Relatório Técnico de Coleta de Evidências Digitais")
+                    .FontSize(12)
+                    .FontColor(Blue);
+
+                column.Item()
+                    .PaddingTop(35)
+                    .LineHorizontal(1)
+                    .LineColor(Accent);
+
+                column.Item()
+                    .PaddingTop(25)
+                    .AlignCenter()
+                    .Text(model.CaseId)
+                    .FontSize(20)
+                    .Bold();
+
+                column.Item()
+                    .PaddingTop(30)
+                    .Column(info =>
                     {
-                        row.RelativeItem().Border(2).BorderColor(Colors.Grey.Lighten2).Padding(15).Background(Colors.Blue.Darken2).CornerRadius(8)
-                            .Text($"BO: {model.BoNumber}").FontSize(14).FontColor(Colors.White).Bold();
-                        row.ConstantItem(30);
-                        row.RelativeItem().Border(2).BorderColor(Colors.Grey.Lighten2).Padding(15).Background(Colors.Blue.Darken2).CornerRadius(8)
-                            .Text($"Procedimento: {model.ProcedureNumber}").FontSize(14).FontColor(Colors.White).Bold();
+                        CoverField(info, "BO", model.BoNumber);
+
+                        CoverField(info, "PROCEDIMENTO", model.ProcedureNumber);
+
+                        CoverField(info, "UNIDADE", model.UnitName);
+
+                        CoverField(info, "RESPONSÁVEL", model.OfficerName);
+
+                        CoverField(
+                            info,
+                            "GERADO EM",
+                            model.GeneratedAtUtc.ToString("dd/MM/yyyy HH:mm:ss UTC"));
                     });
+
+                column.Item()
+                    .PaddingTop(40);
+
+                column.Item()
+                    .AlignCenter()
+                    .Text("ADE – Ata Digital de Evidências")
+                    .FontSize(10)
+                    .Bold();
+
+                column.Item()
+                    .AlignCenter()
+                    .Text("Versão 1.0")
+                    .FontSize(9);
+            });
+    }
+
+    private static void CoverField(
+        ColumnDescriptor column,
+        string title,
+        string? value)
+    {
+        column.Item()
+            .PaddingBottom(12)
+            .Column(item =>
+            {
+                item.Item()
+                    .Text(title)
+                    .FontSize(8)
+                    .Bold()
+                    .FontColor(Blue);
+
+                item.Item()
+                    .PaddingTop(2)
+                    .Text(value ?? "-")
+                    .FontSize(11);
+
+                item.Item()
+                    .PaddingTop(4)
+                    .LineHorizontal(0.3f)
+                    .LineColor(Colors.Grey.Lighten2);
+            });
+    }
+
+    private static void ComposeExecutiveSummary(
+        ColumnDescriptor column,
+        ReportModel model)
+    {
+        SectionHeader(column, "RESUMO EXECUTIVO");
+
+        int screenshots =
+            model.Evidences.Count(x =>
+                x.EvidenceType.Contains("png", StringComparison.OrdinalIgnoreCase)
+                || x.EvidenceType.Contains("jpg", StringComparison.OrdinalIgnoreCase));
+
+        int videos =
+            model.Evidences.Count(x =>
+                x.EvidenceType.Contains("mp4", StringComparison.OrdinalIgnoreCase));
+
+        column.Item()
+            .PaddingTop(10)
+            .Row(row =>
+            {
+                SummaryCard(
+                    row.RelativeItem(),
+                    "Arquivos",
+                    model.Evidences.Count.ToString());
+
+                row.ConstantItem(8);
+
+                SummaryCard(
+                    row.RelativeItem(),
+                    "Capturas",
+                    screenshots.ToString());
+
+                row.ConstantItem(8);
+
+                SummaryCard(
+                    row.RelativeItem(),
+                    "Vídeos",
+                    videos.ToString());
+
+                row.ConstantItem(8);
+
+                SummaryCard(
+                    row.RelativeItem(),
+                    "Eventos",
+                    model.Timeline.Count.ToString());
+            });
+
+        column.Item()
+            .PaddingTop(18)
+            .Background(PaleBlue)
+            .Border(1)
+            .BorderColor(Accent)
+            .Padding(12)
+            .Column(hash =>
+            {
+                hash.Item()
+                    .Text("MASTER SHA-256")
+                    .Bold()
+                    .FontColor(Navy);
+
+                hash.Item()
+                    .Text(model.MasterSha256)
+                    .FontFamily(Fonts.CourierNew)
+                    .FontSize(7);
+
+                hash.Item()
+                    .PaddingTop(10)
+                    .Text("MASTER SHA-512")
+                    .Bold()
+                    .FontColor(Navy);
+
+                hash.Item()
+                    .Text(model.MasterSha512)
+                    .FontFamily(Fonts.CourierNew)
+                    .FontSize(6);
+            });
+    }
+
+    private static void SummaryCard(
+        IContainer container,
+        string title,
+        string value)
+    {
+        container
+            .Background(PaleBlue)
+            .Border(1)
+            .BorderColor(Accent)
+            .Padding(12)
+            .Column(column =>
+            {
+                column.Item()
+                    .AlignCenter()
+                    .Text(value)
+                    .FontSize(20)
+                    .Bold()
+                    .FontColor(Navy);
+
+                column.Item()
+                    .PaddingTop(5)
+                    .AlignCenter()
+                    .Text(title)
+                    .FontSize(8)
+                    .FontColor(Colors.Grey.Darken2);
+            });
+    }
+
+    // ---------------------------------------------------------------------
+    // CABEÇALHO
+    // ---------------------------------------------------------------------   
+    private static void ComposeHeader(PageDescriptor page, ReportModel model)
+    {
+        page.Header().Column(column =>
+        {
+            column.Item().Row(row =>
+            {
+                row.ConstantItem(46)
+                    .Height(46)
+                    .Element(container =>
+                    {
+                        var logo = ResolveLogoPath();
+
+                        if (!string.IsNullOrWhiteSpace(logo))
+                        {
+                            container.Image(logo).FitArea();
+                        }
+                        else
+                        {
+                            container.AlignCenter()
+                                .AlignMiddle()
+                                .Text("ADE")
+                                .Bold()
+                                .FontSize(14)
+                                .FontColor(Navy);
+                        }
+                    });
+
+                row.RelativeItem()
+                    .PaddingLeft(10)
+                    .Column(col =>
+                    {
+                        col.Item()
+                            .Text("ADE – Ata Digital de Evidências")
+                            .FontSize(14)
+                            .Bold()
+                            .FontColor(Navy);
+
+                        col.Item()
+                            .Text($"Caso {model.CaseId}")
+                            .FontSize(8)
+                            .FontColor(Colors.Grey.Darken2);
+                    });
+            });
+
+            column.Item()
+                .PaddingTop(5)
+                .LineHorizontal(0.6f)
+                .LineColor(Colors.Grey.Lighten2);
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // CONTEÚDO
+    // ---------------------------------------------------------------------
+    private static void ComposeContent(ColumnDescriptor column, ReportModel model)    
+    {
+        column.Spacing(20);
+            column.Spacing(20);
+
+            // 1. INTRODUÇÃO
+            Section(column, "1. INTRODUÇÃO", body =>
+            {
+                Paragraph(body,
+                    "O presente relatório foi gerado automaticamente pelo sistema ADE – Ata Digital de Evidências, destinado ao registro, organização e documentação técnica de evidências digitais produzidas ou incorporadas durante uma sessão de coleta.");
+
+                Paragraph(body,
+                    "O documento reúne os eventos registrados cronologicamente, os arquivos produzidos ou importados, seus metadados disponíveis e os respectivos identificadores criptográficos SHA-256 e SHA-512, permitindo a verificação independente da integridade de cada evidência.");
+
+                Paragraph(body,
+                    "Sua finalidade é preservar a rastreabilidade da coleta e fornecer documentação técnica destinada à instrução de procedimentos administrativos, investigativos ou judiciais.");
+            });
+
+            // 2. FUNDAMENTAÇÃO TÉCNICA
+            Section(column, "2. FUNDAMENTAÇÃO TÉCNICA", body =>
+            {
+                Paragraph(body,
+                    "O ADE registra automaticamente os eventos ocorridos durante a sessão de coleta, associando cada evidência aos respectivos metadados disponíveis e aos identificadores criptográficos calculados no momento do registro.");
+
+                Paragraph(body,
+                    "Os códigos HASH SHA-256 e SHA-512 funcionam como identificadores matemáticos únicos, permitindo a verificação objetiva da integridade dos arquivos documentados.");
+
+                Paragraph(body,
+                    "Qualquer alteração posterior produzirá identificadores distintos, possibilitando conferência independente mediante ferramentas compatíveis.");
+            });
+
+            // 3. FUNDAMENTAÇÃO JURÍDICA
+            Section(column, "3. FUNDAMENTAÇÃO JURÍDICA", body =>
+            {
+                Paragraph(body,
+                    "A documentação técnica das evidências observa os princípios da autenticidade, integridade, rastreabilidade e cadeia de custódia previstos na legislação brasileira.");
+
+                Paragraph(body,
+                    "Constituem fundamentos normativos relevantes os artigos 158-A a 158-F do Código de Processo Penal, o artigo 369 do Código de Processo Civil e a Medida Provisória nº 2.200-2/2001, sem prejuízo da legislação específica aplicável ao caso concreto.");
+
+                Paragraph(body,
+                    "Este relatório possui natureza exclusivamente documental e técnica, não substituindo eventual perícia oficial ou particular.");
+            });
+
+            // 4. VERIFICAÇÃO DE INTEGRIDADE
+            Section(column, "4. VERIFICAÇÃO DE INTEGRIDADE", body =>
+            {
+                Paragraph(body,
+                    "Cada evidência registrada possui identificadores criptográficos SHA-256 e SHA-512 calculados automaticamente durante sua inclusão na ata digital.");
+
+                Paragraph(body,
+                    "A conferência independente desses identificadores permite verificar se o conteúdo permanece íntegro em relação ao momento do registro.");
+
+                Paragraph(body,
+                    "A divergência entre os valores constantes neste relatório e aqueles obtidos posteriormente indica alteração do arquivo originalmente documentado.");
+            });
+
+            // ---------------------------------------------------------------------
+            // IDENTIFICADORES CRIPTOGRÁFICOS DO CASO
+            // ---------------------------------------------------------------------
+            column.Item()
+                .Column(col =>
+                {
+                    SectionHeader(col, "IDENTIFICADORES CRIPTOGRÁFICOS");
+
+                    col.Item()
+                        .PaddingTop(10)
+                        .Background(PaleBlue)
+                        .Border(1)
+                        .BorderColor(Accent)
+                        .Padding(15)
+                        .Column(hash =>
+                        {
+                            hash.Item()
+                                .Text("MASTER SHA-256")
+                                .FontSize(11)
+                                .Bold()
+                                .FontColor(Navy);
+
+                            hash.Item()
+                                .PaddingTop(4)
+                                .Text(model.MasterSha256)
+                                .FontFamily(Fonts.CourierNew)
+                                .FontSize(8);
+
+                            hash.Item()
+                                .PaddingTop(12)
+                                .Text("MASTER SHA-512")
+                                .FontSize(11)
+                                .Bold()
+                                .FontColor(Navy);
+
+                            hash.Item()
+                                .PaddingTop(4)
+                                .Text(model.MasterSha512)
+                                .FontFamily(Fonts.CourierNew)
+                                .FontSize(7);
+                        });
                 });
 
-                page.Content().Column(column =>
-                {
-                    column.Spacing(20);
+            // ---------------------------------------------------------------------
+            // ARQUIVOS REGISTRADOS
+            // ---------------------------------------------------------------------
+            column.Item().Column(col =>
+            {
+                SectionHeader(col, "ARQUIVOS REGISTRADOS");
 
-                    // SEÇÃO DE INTRODUÇÃO
-                    column.Item().Column(col =>
+                col.Item()
+                    .PaddingTop(10)
+                    .Table(table =>
                     {
-                        col.Item().Text("1. INTRODUÇÃO").FontSize(18).Bold().FontColor(Colors.Blue.Darken3);
-                        col.Item().PaddingTop(10).Text(
-                            "O presente Relatório Técnico de Captura de Evidências Digitais documenta as operações realizadas durante uma sessão de coleta " +
-                            "conduzida pelo sistema ADE – Ata Digital de Evidências, registrando de forma cronológica os eventos ocorridos, os arquivos " +
-                            "produzidos, seus metadados e os respectivos mecanismos de verificação de integridade.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "O ADE consiste em uma ferramenta destinada à documentação técnica de evidências digitais, permitindo registrar capturas de tela, " +
-                            "gravações de vídeo, importação de arquivos e demais elementos digitais relevantes para procedimentos administrativos, investigativos ou judiciais.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Durante toda a sessão são registrados automaticamente os eventos executados pelo usuário e pelo sistema, incluindo horários, " +
-                            "identificação dos arquivos produzidos, métodos empregados na coleta e resumos criptográficos (hashes), preservando o histórico das operações realizadas.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "O objetivo deste relatório é fornecer documentação técnica suficiente para permitir que terceiros verifiquem a integridade dos arquivos " +
-                            "apresentados, preservando a rastreabilidade da coleta e contribuindo para a adequada análise da evidência digital.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Este documento possui natureza exclusivamente técnica e descritiva, não realizando juízo de valor sobre o conteúdo coletado, " +
-                            "limitando-se a registrar os elementos produzidos durante a sessão.")
-                            .FontSize(11).Justify();
-                    });
-
-                    // SEÇÃO DE FUNDAMENTAÇÃO TÉCNICA
-                    column.Item().Column(col =>
-                    {
-                        col.Item().Text("2. FUNDAMENTAÇÃO TÉCNICA").FontSize(18).Bold().FontColor(Colors.Blue.Darken3);
-                        col.Item().PaddingTop(10).Text(
-                            "A documentação das evidências foi elaborada observando boas práticas internacionalmente reconhecidas para identificação, coleta, " +
-                            "aquisição, preservação e documentação de evidências digitais, especialmente aquelas previstas na ABNT NBR ISO/IEC 27037:2013, " +
-                            "que estabelece diretrizes para o tratamento de evidências potencialmente relevantes para investigações.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "O sistema registra automaticamente informações técnicas capazes de permitir a posterior verificação da integridade dos arquivos produzidos, " +
-                            "incluindo: identificação única do caso; registro cronológico dos eventos; identificação do método de captura; metadados disponíveis; " +
-                            "identificação dos arquivos gerados; cálculo dos códigos HASH SHA-256 e SHA-512; histórico das operações realizadas durante a sessão.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Os códigos HASH consistem em resumos criptográficos calculados sobre o conteúdo dos arquivos, funcionando como identificadores matemáticos únicos. " +
-                            "Qualquer alteração posterior no conteúdo do arquivo produzirá um valor HASH diferente daquele registrado neste relatório, " +
-                            "permitindo a verificação objetiva de sua integridade.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Os registros produzidos pelo ADE possuem caráter documental e técnico, possibilitando a reprodução independente da conferência dos arquivos apresentados.")
-                            .FontSize(11).Justify();
-                    });
-
-                    // SEÇÃO DE FUNDAMENTAÇÃO JURÍDICA
-                    column.Item().Column(col =>
-                    {
-                        col.Item().Text("3. FUNDAMENTAÇÃO JURÍDICA").FontSize(18).Bold().FontColor(Colors.Blue.Darken3);
-                        col.Item().PaddingTop(10).Text(
-                            "A documentação das evidências observa os princípios aplicáveis à preservação e rastreabilidade dos vestígios digitais previstos na legislação brasileira.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "No âmbito processual penal, a cadeia de custódia encontra disciplina nos artigos 158-A a 158-F do Código de Processo Penal, " +
-                            "compreendendo o conjunto de procedimentos destinados à identificação, coleta, registro, acondicionamento, preservação, transporte, " +
-                            "armazenamento e documentação dos vestígios.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Embora a natureza e a utilização das evidências devam ser analisadas de acordo com as peculiaridades de cada procedimento, " +
-                            "o registro técnico dos eventos, dos metadados e dos resumos criptográficos contribui para a demonstração da integridade dos arquivos apresentados.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "No âmbito processual civil, o artigo 369 do Código de Processo Civil assegura às partes o direito de empregar todos os meios legais " +
-                            "e moralmente legítimos aptos a demonstrar a verdade dos fatos, cabendo ao julgador valorar as provas produzidas em conjunto com os demais " +
-                            "elementos constantes dos autos.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "A autenticidade dos arquivos documentados neste relatório pode ser aferida por meio da conferência independente dos códigos HASH registrados, " +
-                            "bem como pela análise dos metadados e do histórico dos eventos documentados.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Este relatório constitui instrumento técnico de documentação da coleta realizada, sem substituir a atividade pericial eventualmente determinada " +
-                            "pela autoridade competente nem estabelecer presunção absoluta de autenticidade ou veracidade do conteúdo registrado.")
-                            .FontSize(11).Justify();
-                    });
-
-                    // SEÇÃO DE VERIFICAÇÃO DE INTEGRIDADE
-                    column.Item().Column(col =>
-                    {
-                        col.Item().Text("4. VERIFICAÇÃO DE INTEGRIDADE").FontSize(18).Bold().FontColor(Colors.Blue.Darken3);
-                        col.Item().PaddingTop(10).Text(
-                            "A confiabilidade das informações apresentadas neste relatório depende da preservação integral deste documento e dos arquivos que o acompanham.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Cada evidência possui códigos HASH calculados pelos algoritmos SHA-256 e SHA-512, permitindo que qualquer interessado realize a verificação independente da integridade dos arquivos.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Para validação, basta calcular novamente o HASH do arquivo utilizando qualquer ferramenta compatível e comparar o resultado obtido com o valor constante neste relatório.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Caso o valor calculado seja diferente daquele registrado, deverá ser considerada a existência de alteração posterior no arquivo, comprometendo sua integridade em relação ao registro originalmente documentado.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Recomenda-se que a verificação seja realizada antes da utilização das evidências em procedimentos administrativos, disciplinares, investigativos ou judiciais.")
-                            .FontSize(11).Justify();
-                    });
-
-                    // SEÇÃO DE INTEGRIDADE COM DESTAQUE
-                    column.Item().Padding(20).Background(Colors.Blue.Lighten1).Border(3).BorderColor(Colors.Blue.Darken2).Column(col =>
-                    {
-                        col.Item().Text("CÓDIGOS HASH DO CASO").FontSize(18).Bold().FontColor(Colors.Blue.Darken3);
-                        col.Item().PaddingTop(12).Text($"Master SHA256: {model.MasterSha256}").FontSize(11).FontColor(Colors.Blue.Darken2);
-                        col.Item().Text($"Master SHA512: {model.MasterSha512}").FontSize(11).FontColor(Colors.Blue.Darken2);
-                    });
-
-                    // TABELA DE EVIDÊNCIAS
-                    column.Item().Column(col =>
-                    {
-                        col.Item().Text("ARQUIVOS REGISTRADOS").FontSize(20).Bold().FontColor(Colors.Blue.Darken3);
-
-                        col.Item().PaddingTop(15).Table(table =>
+                        table.ColumnsDefinition(columns =>
                         {
-                            table.ColumnsDefinition(columns =>
-                            {
-                                columns.ConstantColumn(50); // #
-                                columns.RelativeColumn();    // Arquivo
-                                columns.ConstantColumn(100);  // Método
-                                columns.ConstantColumn(80);  // Tipo
-                                columns.ConstantColumn(120); // Data
-                                columns.RelativeColumn();    // SHA256
-                                columns.RelativeColumn();    // SHA512
-                            });
+                            columns.ConstantColumn(22);   // #
 
-                            table.Header(header =>
-                            {
-                                header.Cell().Background(Colors.Blue.Darken2).Padding(10)
-                                    .Text("#").FontSize(11).Bold().FontColor(Colors.White);
-                                header.Cell().Background(Colors.Blue.Darken2).Padding(10)
-                                    .Text("Arquivo").FontSize(11).Bold().FontColor(Colors.White);
-                                header.Cell().Background(Colors.Blue.Darken2).Padding(10)
-                                    .Text("Método").FontSize(11).Bold().FontColor(Colors.White);
-                                header.Cell().Background(Colors.Blue.Darken2).Padding(10)
-                                    .Text("Tipo").FontSize(11).Bold().FontColor(Colors.White);
-                                header.Cell().Background(Colors.Blue.Darken2).Padding(10)
-                                    .Text("Data").FontSize(11).Bold().FontColor(Colors.White);
-                                header.Cell().Background(Colors.Blue.Darken2).Padding(10)
-                                    .Text("SHA256").FontSize(11).Bold().FontColor(Colors.White);
-                                header.Cell().Background(Colors.Blue.Darken2).Padding(10)
-                                    .Text("SHA512").FontSize(11).Bold().FontColor(Colors.White);
-                            });
+                            columns.RelativeColumn(2.5f); // Arquivo
 
-                            int index = 1;
-                            foreach (var evidence in model.Evidences)
-                            {
-                                table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(8)
-                                    .Text(index.ToString()).FontSize(11);
-                                table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(8)
-                                    .Text(evidence.FileName).FontSize(11);
-                                table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(8)
-                                    .Text(evidence.CollectionMethod).FontSize(11);
-                                table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(8)
-                                    .Text(evidence.EvidenceType).FontSize(11);
-                                table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(8)
-                                    .Text(evidence.CollectedAtUtc.ToString("dd/MM/yyyy HH:mm")).FontSize(11);
-                                table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(8)
-                                    .Text(evidence.Sha256).FontSize(9);
-                                table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(8)
-                                    .Text(evidence.Sha512).FontSize(9);
-                                index++;
-                            }
+                            columns.ConstantColumn(70);   // Método
+
+                            columns.ConstantColumn(55);   // Tipo
+
+                            columns.ConstantColumn(82);   // Data
+
+                            columns.RelativeColumn(2.4f); // SHA-256
+
+                            columns.RelativeColumn(2.4f); // SHA-512
                         });
-                    });
 
-                    // SEÇÃO DE TIMELINE
-                    column.Item().Column(col =>
-                    {
-                        col.Item().Text("5. CADEIA DE CUSTÓDIA DOCUMENTAL").FontSize(18).Bold().FontColor(Colors.Blue.Darken2);
-                        col.Item().PaddingTop(10).Text(
-                            "Durante a sessão são registrados automaticamente os eventos relevantes para reconstrução das operações realizadas.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Entre eles podem ser registrados: criação do caso; início da sessão; capturas de tela; gravações de vídeo; importação de arquivos; " +
-                            "exportação de evidências; geração do relatório; encerramento da sessão.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Cada evento recebe identificação temporal e integra o histórico cronológico do caso, permitindo a reconstrução das operações documentadas durante a coleta.")
-                            .FontSize(11).Justify();
-
-                        col.Item().PaddingTop(15).Text("HISTÓRICO DE EVENTOS").FontSize(16).Bold().FontColor(Colors.Blue.Darken2);
-
-                        col.Item().PaddingTop(12).Table(table =>
+                        table.Header(header =>
                         {
-                            table.ColumnsDefinition(columns =>
-                            {
-                                columns.ConstantColumn(110); // Timestamp
-                                columns.ConstantColumn(90);  // Evento
-                                columns.RelativeColumn();    // Descrição
-                            });
-
-                            table.Header(header =>
-                            {
-                                header.Cell().Background(Colors.Grey.Lighten2).Padding(8)
-                                    .Text("Timestamp").FontSize(10).Bold();
-                                header.Cell().Background(Colors.Grey.Lighten2).Padding(8)
-                                    .Text("Evento").FontSize(10).Bold();
-                                header.Cell().Background(Colors.Grey.Lighten2).Padding(8)
-                                    .Text("Descrição").FontSize(10).Bold();
-                            });
-
-                            foreach (var item in model.Timeline)
-                            {
-                                table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(6)
-                                    .Text(item.TimestampUtc.ToString("dd/MM/yyyy HH:mm:ss")).FontSize(10);
-                                table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(6)
-                                    .Text(item.EventType).FontSize(10);
-                                table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(6)
-                                    .Text(item.Description).FontSize(10);
-                            }
+                            HeaderCell(header, "#");
+                            HeaderCell(header, "Arquivo");
+                            HeaderCell(header, "Método");
+                            HeaderCell(header, "Tipo");
+                            HeaderCell(header, "Data");
+                            HeaderCell(header, "SHA-256");
+                            HeaderCell(header, "SHA-512");
                         });
-                    });
 
-                    // SEÇÃO DE ANEXOS (IMAGENS)
-                    var imageEvidences = model.Evidences.Where(e =>
-                        e.EvidenceType.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
-                        e.EvidenceType.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
-                        e.EvidenceType.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)).ToList();
+                        int index = 1;
 
-                    if (imageEvidences.Any())
-                    {
-                        column.Item().Column(col =>
+                        foreach (var evidence in model.Evidences)
                         {
-                            col.Item().Text("ANEXO: IMAGENS DE TELA").FontSize(18).Bold().FontColor(Colors.Blue.Darken2);
-                            col.Item().Text("Seguem as imagens registradas durante a sessão:").FontSize(11).Italic();
+                            string background =
+                                index % 2 == 0
+                                    ? PaleBlue
+                                    : "#FFFFFF";
 
-                            foreach (var evidence in imageEvidences)
-                            {
-                                string imagePath = Path.Combine(model.CaseFolder, evidence.RelativePath);
+                            BodyCell(table, background, index.ToString(), 8);
 
-                                col.Item().PaddingTop(12).Border(2).BorderColor(Colors.Grey.Lighten1).Padding(12).Column(imgCol =>
+                            BodyCell(
+                                table,
+                                background,
+                                evidence.FileName,
+                                8);
+
+                            BodyCell(
+                                table,
+                                background,
+                                evidence.CollectionMethod.Replace("_", " "),
+                                8);
+
+                            BodyCell(
+                                table,
+                                background,
+                                evidence.EvidenceType.ToUpper(),
+                                8);
+
+                            BodyCell(
+                                table,
+                                background,
+                                evidence.CollectedAtUtc.ToString("dd/MM/yyyy HH:mm:ss"),
+                                7.5f);
+
+                            BodyCellMono(
+                                table,
+                                background,
+                                evidence.Sha256,
+                                6);
+
+                            BodyCellMono(
+                                table,
+                                background,
+                                evidence.Sha512,
+                                5.8f);
+
+                            index++;
+                        }
+                    });
+            });
+
+            // ---------------------------------------------------------------------
+            // TIMELINE DA COLETA
+            // ---------------------------------------------------------------------
+            column.Item().Column(col =>
+            {
+                SectionHeader(col, "TIMELINE DA COLETA");
+
+                col.Item()
+                    .PaddingTop(8)
+                    .Column(events =>
+                    {
+                        int index = 1;
+
+                        foreach (var item in model.Timeline.OrderBy(x => x.TimestampUtc))
+                        {
+                            string background =
+                                index % 2 == 0
+                                    ? PaleBlue
+                                    : "#FFFFFF";
+
+                            events.Item()
+                                .Background(background)
+                                .Border(0.5f)
+                                .BorderColor(Colors.Grey.Lighten2)
+                                .Padding(10)
+                                .PaddingBottom(12)
+                                .Column(card =>
                                 {
-                                    imgCol.Item().Row(row =>
+                                    card.Item()
+                                        .Row(row =>
+                                        {
+                                            row.ConstantItem(135)
+                                                .Text(item.TimestampUtc.ToString("dd/MM/yyyy HH:mm:ss"))
+                                                .FontFamily(Fonts.CourierNew)
+                                                .FontSize(8)
+                                                .FontColor(Navy);
+
+                                            row.RelativeItem()
+                                                .Text(item.EventType.Replace("_", " "))
+                                                .Bold()
+                                                .FontSize(10)
+                                                .FontColor(Blue);
+                                        });
+
+                                    if (!string.IsNullOrWhiteSpace(item.Description))
                                     {
-                                        // Try to load and display the actual image
+                                        card.Item()
+                                            .PaddingTop(6)
+                                            .PaddingLeft(135)
+                                            .Text(item.Description)
+                                            .FontSize(8)
+                                            .FontColor(Colors.Grey.Darken2);
+                                    }
+                                });
+
+                            index++;
+                        }
+                    });
+            });
+            
+            // ANEXO: IMAGENS
+            var imageEvidences = model.Evidences.Where(e =>
+                e.EvidenceType.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
+                e.EvidenceType.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                e.EvidenceType.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)).ToList();
+
+            if (imageEvidences.Any())
+            {
+                column.Item().Column(col =>
+                {
+                    SectionHeader(col, "ANEXO: IMAGENS DE TELA");
+                    col.Item().PaddingTop(8).Text("Seguem as imagens registradas durante a sessão:")
+                        .FontSize(10).Italic();
+
+                    foreach (var evidence in imageEvidences)
+                    {
+                        string imagePath =
+                            Path.Combine(
+                                model.CaseFolder,
+                                evidence.RelativePath);
+
+                        col.Item()
+                            .PageBreak();
+
+                        col.Item()
+                            .Column(image =>
+                            {
+                                image.Item()
+                                    .Text(evidence.FileName)
+                                    .FontSize(18)
+                                    .Bold()
+                                    .FontColor(Navy);
+
+                                image.Item()
+                                    .PaddingTop(8)
+                                    .Text($"Registrado em: {evidence.CollectedAtUtc:dd/MM/yyyy HH:mm:ss}")
+                                    .FontSize(8);
+
+                                image.Item()
+                                    .Text($"Método de coleta: {evidence.CollectionMethod.Replace("_", " ")}")
+                                    .FontSize(8);
+
+                                image.Item()
+                                    .PaddingTop(8)
+                                    .Text("SHA-256")
+                                    .Bold()
+                                    .FontSize(8);
+
+                                image.Item()
+                                    .Text(FormatHash(evidence.Sha256))
+                                    .FontFamily(Fonts.CourierNew)
+                                    .FontSize(7);
+
+                                image.Item()
+                                    .PaddingTop(6)
+                                    .Text("SHA-512")
+                                    .Bold()
+                                    .FontSize(8);
+
+                                image.Item()
+                                    .Text(FormatHash(evidence.Sha512))
+                                    .FontFamily(Fonts.CourierNew)
+                                    .FontSize(6);
+
+                                image.Item()
+                                    .PaddingTop(15)
+                                    .Border(1)
+                                    .BorderColor(Accent)
+                                    .Padding(5)
+                                    .Height(560)
+                                    .Element(container =>
+                                    {
                                         if (File.Exists(imagePath))
                                         {
-                                            try
-                                            {
-                                                row.ConstantItem(220).Height(165).Border(2).BorderColor(Colors.Grey.Lighten2)
-                                                    .Image(imagePath);
-                                            }
-                                            catch
-                                            {
-                                                // Fallback to placeholder if image loading fails
-                                                row.ConstantItem(220).Height(165).Background(Colors.Grey.Lighten3)
-                                                    .AlignCenter().AlignMiddle()
-                                                    .Text("IMG").FontSize(14).Bold().FontColor(Colors.Grey.Darken1);
-                                            }
+                                            container
+                                                .AlignCenter()
+                                                .AlignMiddle()
+                                                .Image(imagePath)
+                                                .FitWidth();
                                         }
                                         else
                                         {
-                                            row.ConstantItem(220).Height(165).Background(Colors.Grey.Lighten3)
-                                                .AlignCenter().AlignMiddle()
-                                                .Text("IMG").FontSize(14).Bold().FontColor(Colors.Grey.Darken1);
+                                            container
+                                                .AlignCenter()
+                                                .AlignMiddle()
+                                                .Text("Imagem não localizada")
+                                                .FontSize(14)
+                                                .FontColor(Colors.Grey.Darken1);
                                         }
-
-                                        row.RelativeItem().PaddingLeft(18).Column(infoCol =>
-                                        {
-                                            infoCol.Item().Text($"Arquivo: {evidence.FileName}").FontSize(11).Bold();
-                                            infoCol.Item().Text($"Registrado em: {evidence.CollectedAtUtc:dd/MM/yyyy HH:mm:ss}").FontSize(10);
-                                            infoCol.Item().PaddingTop(8).Text($"HASH SHA512: {evidence.Sha512}").FontSize(8);
-                                            infoCol.Item().Text($"HASH SHA256: {evidence.Sha256}").FontSize(8);
-                                            infoCol.Item().PaddingTop(8).Text($"Método: {evidence.CollectionMethod}").FontSize(10);
-                                            infoCol.Item().Text($"Caminho: {evidence.RelativePath}").FontSize(10).Italic();
-                                        });
                                     });
-                                });
-                            }
-                        });
+                            });
                     }
-
-                    // SEÇÃO DE LIMITAÇÕES
-                    column.Item().Column(col =>
-                    {
-                        col.Item().Text("6. LIMITAÇÕES DO REGISTRO").FontSize(18).Bold().FontColor(Colors.Blue.Darken2);
-                        col.Item().PaddingTop(10).Text(
-                            "O ADE registra tecnicamente os elementos apresentados ao sistema durante a sessão de captura.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "A ferramenta não altera, interpreta, certifica ou valida o conteúdo das informações exibidas ao usuário, limitando-se à documentação técnica da coleta realizada.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "A análise da origem das informações, da autoria do conteúdo, de sua veracidade, completude, contexto ou relevância jurídica deverá ser realizada pela autoridade competente ou por profissional habilitado, conforme a natureza do procedimento.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Da mesma forma, a aceitação deste relatório como elemento de prova dependerá da legislação aplicável ao caso concreto, da análise conjunta das demais provas produzidas e do convencimento da autoridade responsável pela decisão.")
-                            .FontSize(11).Justify();
-                    });
-
-                    // SEÇÃO DE DECLARAÇÃO TÉCNICA
-                    column.Item().Column(col =>
-                    {
-                        col.Item().Text("7. DECLARAÇÃO TÉCNICA").FontSize(18).Bold().FontColor(Colors.Blue.Darken2);
-                        col.Item().PaddingTop(10).Text(
-                            "Este relatório foi gerado automaticamente pelo sistema ADE – Ata Digital de Evidências, a partir dos registros produzidos durante a sessão de captura.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "As informações aqui constantes refletem exclusivamente os eventos documentados pelo sistema, os arquivos produzidos ou importados, seus metadados disponíveis e os respectivos resumos criptográficos calculados no momento do registro.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "O documento possui finalidade de documentação técnica da coleta realizada, permitindo a verificação independente da integridade dos arquivos apresentados e a reconstrução cronológica das operações executadas durante a sessão.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Não constitui certificação de autenticidade material do conteúdo capturado, nem substitui perícia oficial ou particular eventualmente realizada, servindo como instrumento de preservação, organização e documentação de evidências digitais.")
-                            .FontSize(11).Justify();
-                    });
-
-                    // SEÇÃO DE CONSIDERAÇÕES FINAIS
-                    column.Item().Column(col =>
-                    {
-                        col.Item().Text("8. CONSIDERAÇÕES FINAIS").FontSize(18).Bold().FontColor(Colors.Blue.Darken2);
-                        col.Item().PaddingTop(10).Text(
-                            "As evidências relacionadas neste relatório permanecem vinculadas aos respectivos identificadores, registros temporais e códigos HASH apresentados neste documento.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "A manutenção da integridade dos arquivos originais e deste relatório é condição essencial para a preservação de sua rastreabilidade documental.")
-                            .FontSize(11).Justify();
-                        col.Item().PaddingTop(10).Text(
-                            "Sempre que possível, recomenda-se que os arquivos sejam armazenados em mídia somente leitura, acompanhados deste relatório, do histórico de eventos e do arquivo de manifesto do caso, permitindo futura verificação independente por qualquer interessado.")
-                            .FontSize(11).Justify();
-                    });
                 });
+            }
 
-                // RODAPÉ
-                page.Footer().AlignCenter().PaddingTop(10).Column(col =>
-                {
-                    col.Item().AlignCenter().Text("ADE – Ata Digital de Evidências")
-                        .FontSize(9).Bold().FontColor(Colors.Grey.Darken1);
-                    col.Item().PaddingTop(3).AlignCenter().Text("Ferramenta destinada à documentação técnica, preservação e organização de evidências digitais, fundamentada em boas práticas de computação forense, rastreabilidade documental e verificação independente de integridade.")
-                        .FontSize(7).FontColor(Colors.Grey.Darken1);
-                });
+            // 6. LIMITAÇÕES
+            Section(column, "6. LIMITAÇÕES DO REGISTRO", body =>
+            {
+                Paragraph(body, "O ADE registra tecnicamente os elementos apresentados ao sistema durante a sessão de captura.");
+                Paragraph(body, "A ferramenta não altera, interpreta, certifica ou valida o conteúdo das informações exibidas ao usuário, limitando-se à documentação técnica da coleta realizada.");
+                Paragraph(body, "A análise da origem das informações, da autoria do conteúdo, de sua veracidade, completude, contexto ou relevância jurídica deverá ser realizada pela autoridade competente ou por profissional habilitado, conforme a natureza do procedimento.");
+                Paragraph(body, "Da mesma forma, a aceitação deste relatório como elemento de prova dependerá da legislação aplicável ao caso concreto, da análise conjunta das demais provas produzidas e do convencimento da autoridade responsável pela decisão.");
             });
-        })
-        .GeneratePdf(destinationFile);
+
+            // 7. DECLARAÇÃO TÉCNICA
+            Section(column, "7. DECLARAÇÃO TÉCNICA", body =>
+            {
+                Paragraph(body, "Este relatório foi gerado automaticamente pelo sistema ADE – Ata Digital de Evidências, a partir dos registros produzidos durante a sessão de captura.");
+                Paragraph(body, "As informações aqui constantes refletem exclusivamente os eventos documentados pelo sistema, os arquivos produzidos ou importados, seus metadados disponíveis e os respectivos resumos criptográficos calculados no momento do registro.");
+                Paragraph(body, "O documento possui finalidade de documentação técnica da coleta realizada, permitindo a verificação independente da integridade dos arquivos apresentados e a reconstrução cronológica das operações executadas durante a sessão.");
+                Paragraph(body, "Não constitui certificação de autenticidade material do conteúdo capturado, nem substitui perícia oficial ou particular eventualmente realizada, servindo como instrumento de preservação, organização e documentação de evidências digitais.");
+            });
+
+            // 8. CONSIDERAÇÕES FINAIS
+            Section(column, "8. CONSIDERAÇÕES FINAIS", body =>
+            {
+                Paragraph(body, "As evidências relacionadas neste relatório permanecem vinculadas aos respectivos identificadores, registros temporais e códigos HASH apresentados neste documento.");
+                Paragraph(body, "A manutenção da integridade dos arquivos originais e deste relatório é condição essencial para a preservação de sua rastreabilidade documental.");
+            });
+        
+    }
+
+    // ---------------------------------------------------------------------
+    // RODAPÉ
+    // ---------------------------------------------------------------------
+    private static void ComposeFooter(PageDescriptor page)
+    {
+        page.Footer()
+            .Column(col =>
+            {
+                col.Item()
+                    .LineHorizontal(0.4f)
+                    .LineColor(Colors.Grey.Lighten2);
+
+                col.Item()
+                    .PaddingTop(3)
+                    .Row(row =>
+                    {
+                        row.RelativeItem()
+                            .Text("ADE – Ata Digital de Evidências")
+                            .FontSize(7)
+                            .FontColor(Colors.Grey.Darken1);
+
+                        row.RelativeItem()
+                            .AlignCenter()
+                            .Text("Versão 1.0")
+                            .FontSize(7)
+                            .FontColor(Colors.Grey.Darken1);
+
+                        row.RelativeItem()
+                            .AlignRight()
+                            .Text(txt =>
+                            {
+                                txt.DefaultTextStyle(x => x.FontSize(7));
+
+                                txt.Span("Página ");
+
+                                txt.CurrentPageNumber();
+
+                                txt.Span(" de ");
+
+                                txt.TotalPages();
+                            });
+                    });
+            });
+    }
+
+    // ---------------------------------------------------------------------
+    // HELPERS DE LAYOUT
+    // ---------------------------------------------------------------------
+
+    // Bloco completo: cabeçalho de seção + corpo de parágrafos
+    private static void Section(ColumnDescriptor column, string title, Action<ColumnDescriptor> body)
+    {
+        column.Item().Column(col =>
+        {
+            SectionHeader(col, title);
+            col.Item().PaddingTop(8).Column(body);
+        });
+    }
+
+    // Cabeçalho de seção com faixa clara + borda lateral de destaque
+    private static void SectionHeader(
+        ColumnDescriptor column,
+        string title)
+    {
+        column.Item()
+            .PaddingTop(20)
+            .PaddingBottom(5)
+            .Text(title)
+            .FontSize(15)
+            .Bold()
+            .FontColor(Navy);
+
+        column.Item()
+            .LineHorizontal(0.8f)
+            .LineColor(Accent);
+
+        column.Item()
+            .PaddingBottom(5);
+    }
+
+    private static void Paragraph(
+        ColumnDescriptor body,
+        string text)
+    {
+        body.Item()
+            .PaddingTop(8)
+            .PaddingLeft(22)
+            .PaddingRight(8)
+            .Text(text)
+            .FontSize(10)
+            .FontColor(Colors.Grey.Darken4)
+            .LineHeight(1.45f)
+            .Justify();
+    }
+
+   private static void HeaderCell(
+        TableCellDescriptor header,
+        string text)
+    {
+        header.Cell()
+            .Background(Navy)
+            .PaddingVertical(8)
+            .PaddingHorizontal(6)
+            .BorderBottom(1)
+            .BorderColor(Accent)
+            .AlignMiddle()
+            .Text(text)
+            .Bold()
+            .FontSize(8)
+            .FontColor(Colors.White);
+    }
+
+    private static void BodyCell(
+        TableDescriptor table,
+        string background,
+        string? value,
+        float fontSize = 8)
+    {
+        table.Cell()
+            .Background(background)
+            .BorderBottom(0.3f)
+            .BorderColor(Colors.Grey.Lighten2)
+            .PaddingVertical(7)
+            .PaddingHorizontal(6)
+            .AlignMiddle()
+            .Text(value ?? "")
+            .FontSize(fontSize)
+            .FontColor(Colors.Grey.Darken4);
+    }
+    private static void BodyCellMono(
+        TableDescriptor table,
+        string background,
+        string? value,
+        float fontSize = 6)
+    {
+        table.Cell()
+            .Background(background)
+            .BorderBottom(0.3f)
+            .BorderColor(Colors.Grey.Lighten2)
+            .PaddingVertical(7)
+            .PaddingHorizontal(5)
+            .AlignMiddle()
+            .Text(value ?? "")
+            .FontFamily(Fonts.CourierNew)
+            .FontSize(fontSize)
+            .FontColor(Navy);
+    }
+
+    private static void ImagePlaceholder(RowDescriptor row)
+    {
+        row.ConstantItem(180).Height(135).Background(SoftBlue)
+            .Border(1).BorderColor(Accent)
+            .AlignCenter().AlignMiddle()
+            .Text("IMG").FontSize(18).Bold().FontColor(Navy);
+    }
+
+    private static string FormatHash(string? hash)
+            {
+                if (string.IsNullOrWhiteSpace(hash))
+                    return "";
+
+                const int block = 32;
+
+                return string.Join(
+                    Environment.NewLine,
+                    Enumerable.Range(0, (hash.Length + block - 1) / block)
+                        .Select(i =>
+                        {
+                            int start = i * block;
+
+                            return hash.Substring(
+                                start,
+                                Math.Min(block, hash.Length - start));
+                        }));
+            }
+    private static string? ResolveLogoPath()
+    {
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+
+        string[] candidates =
+        {
+            Path.Combine(baseDir, "Resources", "logo.png"),
+            Path.Combine(baseDir, "Resources", "ade.png"),
+
+            Path.Combine(baseDir, "ADE.Reporting", "Resources", "logo.png"),
+            Path.Combine(baseDir, "ADE.Reporting", "Resources", "ade.png"),
+
+            Path.Combine(
+                Directory.GetParent(baseDir)?.FullName ?? "",
+                "Resources",
+                "logo.png"),
+
+            Path.Combine(
+                Directory.GetParent(baseDir)?.FullName ?? "",
+                "Resources",
+                "ade.png"),
+
+            Path.Combine(
+                Directory.GetParent(baseDir)?.FullName ?? "",
+                "ADE.Reporting",
+                "Resources",
+                "logo.png"),
+
+            Path.Combine(
+                Directory.GetParent(baseDir)?.FullName ?? "",
+                "ADE.Reporting",
+                "Resources",
+                "ade.png")
+        };
+
+        foreach (var file in candidates)
+        {
+            if (File.Exists(file))
+                return file;
+        }
+
+        return null;
     }
 }

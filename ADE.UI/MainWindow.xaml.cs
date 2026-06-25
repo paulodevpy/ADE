@@ -23,12 +23,57 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<EvidenceFile>
         _evidences = new();
 
+    private SystemTrayIcon? _systemTrayIcon;
+
     public MainWindow()
     {
         InitializeComponent();
 
         EvidenceGrid.ItemsSource =
             _evidences;
+
+        _systemTrayIcon = new SystemTrayIcon(this);
+
+        StateChanged += MainWindow_StateChanged;
+        Closing += MainWindow_Closing;
+    }
+
+    private void MainWindow_StateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            _systemTrayIcon?.HideWindow();
+        }
+    }
+
+    private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (WindowState == WindowState.Normal)
+        {
+            var result = MessageBox.Show(
+                "Deseja minimizar para a bandeja do sistema ou fechar completamente?",
+                "ADE",
+                MessageBoxButton.YesNoCancel,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                WindowState = WindowState.Minimized;
+            }
+            else if (result == MessageBoxResult.Cancel)
+            {
+                e.Cancel = true;
+            }
+            else
+            {
+                _systemTrayIcon?.Dispose();
+            }
+        }
+        else
+        {
+            _systemTrayIcon?.Dispose();
+        }
     }
 
     private void SetStatus(string status)
@@ -40,6 +85,14 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        // limpa completamente a sessão anterior
+
+        _evidences.Clear();
+
+        EvidenceGrid.Items.Refresh();
+
+        SetStatus("CRIANDO CASO");
+
         var caseManager =
             new CaseManager();
 
@@ -59,8 +112,6 @@ public partial class MainWindow : Window
 
         CaseIdTextBlock.Text =
             $"Caso Atual: {_currentCaseId}";
-
-        SetStatus("EM ANDAMENTO");
 
         var metadata =
             new CaseMetadata
@@ -93,15 +144,12 @@ public partial class MainWindow : Window
                     DateTime.UtcNow
             };
 
-
-        var metadataManager =
-            new CaseMetadataManager();
-
-        metadataManager.Save(
-            metadata,
-            Path.Combine(
-                caseManager.RootPath,
-                "metadata"));
+        new CaseMetadataManager()
+            .Save(
+                metadata,
+                Path.Combine(
+                    caseManager.RootPath,
+                    "metadata"));
 
         var audit =
             new AuditChain();
@@ -116,9 +164,15 @@ public partial class MainWindow : Window
                 "logs",
                 "audit.jsonl"));
 
+        AtualizarManifesto();
+
+        SetStatus("CASO EM ANDAMENTO");
+
         MessageBox.Show(
-            $"Coleta criada:\n\n{caseManager.CaseId}",
-            "ADE");
+            $"Novo caso criado.\n\n{caseManager.CaseId}",
+            "ADE",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
     }
 
     private void AdicionarEvidencia_Click(
@@ -200,9 +254,9 @@ public partial class MainWindow : Window
             _currentCasePath);
     }
 
-    private void CapturarTela_Click(
-    object sender,
-    RoutedEventArgs e)
+    public void CapturarTela_Click(
+    object? sender,
+    RoutedEventArgs? e)
     {
         if (_currentCasePath is null)
             return;
@@ -482,9 +536,9 @@ public partial class MainWindow : Window
                     "Erro");
             }
         }
-    private void CapturarMonitor_Click(
-        object sender,
-        RoutedEventArgs e)
+    public void CapturarMonitor_Click(
+        object? sender,
+        RoutedEventArgs? e)
     {
         if (_currentCasePath is null)
             return;
@@ -510,9 +564,9 @@ public partial class MainWindow : Window
 
         overlay.Show();
     }
-    private void CapturarJanela_Click(
-        object sender,
-        RoutedEventArgs e)
+    public void CapturarJanela_Click(
+        object? sender,
+        RoutedEventArgs? e)
         {
             if (_currentCasePath is null)
                 return;

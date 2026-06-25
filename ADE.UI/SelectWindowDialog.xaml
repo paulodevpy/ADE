@@ -4,7 +4,10 @@
         Title="Selecionar Janela"
         Height="600"
         Width="900"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        Activated="Window_Activated"
+        Deactivated="Window_Deactivated">
 
     <Grid Margin="10">
 

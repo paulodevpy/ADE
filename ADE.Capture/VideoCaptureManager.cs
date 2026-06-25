@@ -7,8 +7,11 @@ namespace ADE.Capture;
 /// Gerenciador de captura de vídeo com cadeia de custódia.
 /// Implementação básica que pode ser expandida com FFmpeg ou similar.
 /// </summary>
-public static class VideoCaptureManager
+public class VideoCaptureManager
 {
+    private Process? _recordingProcess;
+    private string? _outputPath;
+
     /// <summary>
     /// Verifica se há suporte para gravação de vídeo (FFmpeg instalado).
     /// </summary>
@@ -43,11 +46,14 @@ public static class VideoCaptureManager
     /// Inicia a gravação de vídeo da tela completa.
     /// </summary>
     /// <param name="destinationFolder">Pasta de destino para o vídeo.</param>
+    /// <param name="captureType">Tipo de captura (SCREEN, MONITOR, WINDOW).</param>
     /// <param name="monitorIndex">Índice do monitor (0 para primário).</param>
-    /// <returns>Processo de gravação em andamento.</returns>
-    public static Process StartRecording(
+    /// <param name="windowHandle">Handle da janela para captura de janela específica.</param>
+    public void StartRecording(
         string destinationFolder,
-        int monitorIndex = 0)
+        string captureType = "SCREEN",
+        int monitorIndex = 0,
+        nint? windowHandle = null)
     {
         if (!IsVideoRecordingSupported())
         {
@@ -58,61 +64,67 @@ public static class VideoCaptureManager
         Directory.CreateDirectory(destinationFolder);
 
         string fileName = $"VIDEO_{DateTime.Now:yyyyMMdd_HHmmss}.mp4";
-        string outputPath = Path.Combine(destinationFolder, fileName);
+        _outputPath = Path.Combine(destinationFolder, fileName);
 
         // Configurar argumentos do FFmpeg para captura de tela
-        // Nota: Esta é uma implementação básica. Ajustes podem ser necessários
-        // dependendo do sistema operacional e configurações.
-        string arguments = monitorIndex == 0
-            ? $"-f gdigrab -framerate 30 -i desktop -c:v libx264 -preset ultrafast -crf 22 \"{outputPath}\""
-            : $"-f gdigrab -framerate 30 -i desktop -offset_x {GetMonitorOffsetX(monitorIndex)} -offset_y {GetMonitorOffsetY(monitorIndex)} -video_size {GetMonitorResolution(monitorIndex)} -c:v libx264 -preset ultrafast -crf 22 \"{outputPath}\"";
+        string arguments = captureType switch
+        {
+            "MONITOR" when monitorIndex > 0 => 
+                $"-f gdigrab -framerate 30 -i desktop -offset_x {GetMonitorOffsetX(monitorIndex)} -offset_y {GetMonitorOffsetY(monitorIndex)} -video_size {GetMonitorResolution(monitorIndex)} -c:v libx264 -preset ultrafast -crf 22 \"{_outputPath}\"",
+            "WINDOW" when windowHandle.HasValue => 
+                $"-f gdigrab -framerate 30 -i title={windowHandle.Value} -c:v libx264 -preset ultrafast -crf 22 \"{_outputPath}\"",
+            _ => 
+                $"-f gdigrab -framerate 30 -i desktop -c:v libx264 -preset ultrafast -crf 22 \"{_outputPath}\""
+        };
 
-        var process = new Process
+        _recordingProcess = new Process
         {
             StartInfo = new ProcessStartInfo
             {
                 FileName = "ffmpeg",
                 Arguments = arguments,
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                RedirectStandardInput = true
             }
         };
 
-        process.Start();
-        return process;
+        _recordingProcess.Start();
     }
 
     /// <summary>
     /// Para a gravação de vídeo em andamento.
     /// </summary>
-    /// <param name="recordingProcess">Processo de gravação.</param>
-    public static void StopRecording(Process recordingProcess)
+    /// <returns>Caminho do arquivo gravado.</returns>
+    public string StopRecording()
     {
-        if (recordingProcess == null || recordingProcess.HasExited)
-            return;
+        if (_recordingProcess == null || _recordingProcess.HasExited)
+            return _outputPath ?? string.Empty;
 
         try
         {
             // Enviar comando 'q' para o FFmpeg parar graciosamente
-            recordingProcess.StandardInput.WriteLine("q");
+            _recordingProcess.StandardInput.WriteLine("q");
             
             // Aguarda um pouco para o processo finalizar
-            if (!recordingProcess.WaitForExit(5000))
+            if (!_recordingProcess.WaitForExit(5000))
             {
-                recordingProcess.Kill();
+                _recordingProcess.Kill();
             }
         }
         catch
         {
             try
             {
-                recordingProcess.Kill();
+                _recordingProcess.Kill();
             }
             catch
             {
                 // Ignorar erros ao tentar matar o processo
             }
         }
+
+        return _outputPath ?? string.Empty;
     }
 
     /// <summary>

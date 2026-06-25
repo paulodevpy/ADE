@@ -2,18 +2,122 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Captura"
-        Height="1"
-        Width="1"
-        WindowStyle="None"
-        AllowsTransparency="True"
-        Background="#00000000"
+        Height="200"
+        Width="750"
+        WindowStyle="SingleBorderWindow"
+        Background="#F0F4F8"
         Topmost="True"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
-        ShowInTaskbar="False">
+        ShowInTaskbar="True"
+        Focusable="True"
+        Activated="Window_Activated"
+        Deactivated="Window_Deactivated">
 
-    <Grid>
-        <!-- Janela invisível - sem elementos visuais -->
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                BorderThickness="0"
+                                Padding="8,6"
+                                x:Name="ButtonBorder">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="25">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" 
+                   Text="Controles de Captura" 
+                   FontSize="16" 
+                   FontWeight="Bold" 
+                   Foreground="#0A3D7C"
+                   Margin="0,0,0,5"
+                   HorizontalAlignment="Center"/>
+        
+        <TextBlock Grid.Row="1" 
+                   Text="Pressione Ctrl+Shift+A para restaurar a janela durante gravação" 
+                   FontSize="11" 
+                   Foreground="#666666"
+                   Margin="0,0,0,15"
+                   HorizontalAlignment="Center"
+                   FontStyle="Italic"/>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Button Name="CaptureButton" 
+                    Content="Capturar" 
+                    Width="150" 
+                    Height="50" 
+                    Margin="0,0,15,0"
+                    Background="#0A3D7C"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Click="Capture_Click"
+                    Cursor="Hand"
+                    FontWeight="SemiBold"
+                    FontSize="13"/>
+
+            <Button Name="StartVideoButton" 
+                    Content="Iniciar Vídeo" 
+                    Width="150" 
+                    Height="50" 
+                    Margin="0,0,15,0"
+                    Background="#2E7D32"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Click="StartVideo_Click"
+                    Cursor="Hand"
+                    FontWeight="SemiBold"
+                    FontSize="13"/>
+
+            <Button Name="StopVideoButton" 
+                    Content="Parar Vídeo" 
+                    Width="150" 
+                    Height="50" 
+                    Margin="0,0,15,0"
+                    Background="#E65100"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Click="StopVideo_Click"
+                    IsEnabled="False"
+                    Cursor="Hand"
+                    FontWeight="SemiBold"
+                    FontSize="13"/>
+
+            <Button Name="CloseButton" 
+                    Content="Fechar" 
+                    Width="130" 
+                    Height="50" 
+                    Background="#6A1B9A"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Click="Close_Click"
+                    Cursor="Hand"
+                    FontWeight="SemiBold"
+                    FontSize="13"/>
+        </StackPanel>
     </Grid>
 
 </Window>
