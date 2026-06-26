@@ -4,6 +4,7 @@ using System.Linq;
 using QuestPDF.Fluent;
 using QuestPDF.Infrastructure;
 using QuestPDF.Helpers;
+using ADE.Core.Models;
 
 namespace ADE.Reporting.Pdf;
 
@@ -491,7 +492,7 @@ public static class PdfReportManager
                             BodyCell(
                                 table,
                                 background,
-                                evidence.CollectionMethod.Replace("_", " "),
+                                GetCollectionMethodDescription(evidence.CollectionMethod),
                                 8);
 
                             BodyCell(
@@ -536,7 +537,50 @@ public static class PdfReportManager
                     {
                         int index = 1;
 
-                        foreach (var item in model.Timeline.OrderBy(x => x.TimestampUtc))
+                        foreach (var item in model.Timeline
+                            .Where(item =>
+                            {
+                                if (item.EventType == "EVIDENCE_DELETED")
+                                    return false;
+
+                                if (item.EventType == "FILE_IMPORTED")
+                                {
+                                    return model.Evidences.Any(e =>
+                                        string.Equals(
+                                            e.Sha256,
+                                            item.Description,
+                                            StringComparison.OrdinalIgnoreCase));
+                                }
+
+                                if (item.EventType == "EVIDENCE_ADDED")
+                                {
+                                    return model.Evidences.Any(e =>
+                                        item.Description.Contains(
+                                            e.Sha256,
+                                            StringComparison.OrdinalIgnoreCase));
+                                }
+
+                                if (item.EventType.StartsWith("SCREEN"))
+                                {
+                                    return model.Evidences.Any(e =>
+                                        string.Equals(
+                                            e.Sha256,
+                                            item.Description,
+                                            StringComparison.OrdinalIgnoreCase));
+                                }
+
+                                if (item.EventType.StartsWith("MONITOR"))
+                                {
+                                    return model.Evidences.Any(e =>
+                                        string.Equals(
+                                            e.Sha256,
+                                            item.Description,
+                                            StringComparison.OrdinalIgnoreCase));
+                                }
+
+                                return true;
+                            })
+                            .OrderBy(x => x.TimestampUtc))
                         {
                             string background =
                                 index % 2 == 0
@@ -582,7 +626,111 @@ public static class PdfReportManager
                         }
                     });
             });
-            
+            // CATÁLOGO VISUAL DAS EVIDÊNCIAS
+            var thumbnailEvidences = model.Evidences.Where(e =>
+                e.EvidenceType.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
+                e.EvidenceType.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                e.EvidenceType.Equals(".jpeg", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (thumbnailEvidences.Any())
+            {
+                column.Item().PageBreak();
+
+                column.Item().Column(cat =>
+                {
+                    SectionHeader(
+                        cat,
+                        "CATÁLOGO VISUAL DAS EVIDÊNCIAS");
+
+                    cat.Item()
+                        .PaddingTop(8)
+                        .Text(
+                            "As miniaturas abaixo permitem localizar rapidamente cada evidência constante deste relatório.")
+                        .FontSize(10);
+
+                    foreach (var evidence in thumbnailEvidences)
+                    {
+                        string thumbnailPath =
+                            Path.Combine(
+                                model.CaseFolder,
+                                evidence.ThumbnailRelativePath);
+
+                        string originalPath =
+                            Path.Combine(
+                                model.CaseFolder,
+                                evidence.RelativePath);
+
+                        cat.Item()
+                            .PaddingTop(12)
+                            .Border(1)
+                            .BorderColor(Accent)
+                            .Padding(8)
+                            .Row(row =>
+                            {
+                                row.ConstantItem(170)
+                                    .Height(120)
+                                    .Element(container =>
+                                    {
+                                        if (File.Exists(thumbnailPath))
+                                        {
+                                            container.Image(thumbnailPath);
+                                        }
+                                        else if (File.Exists(originalPath))
+                                        {
+                                            container.Image(originalPath);
+                                        }
+                                        else
+                                        {
+                                            container
+                                                .AlignMiddle()
+                                                .AlignCenter()
+                                                .Text("Imagem indisponível")
+                                                .FontSize(9)
+                                                .Italic();
+                                        }
+                                    });
+
+                                row.RelativeItem()
+                                    .PaddingLeft(12)
+                                    .Column(info =>
+                                    {
+                                        info.Item()
+                                            .Text(evidence.FileName)
+                                            .Bold()
+                                            .FontSize(12);
+
+                                        info.Item()
+                                            .PaddingTop(6)
+                                            .Text(
+                                                $"Data/Hora: {evidence.CollectedAtUtc:dd/MM/yyyy HH:mm:ss}")
+                                            .FontSize(9);
+
+                                        info.Item()
+                                            .Text(
+                                                $"Método: {GetCollectionMethodDescription(evidence.CollectionMethod)}")
+                                            .FontSize(9);
+
+                                        info.Item()
+                                            .Text(
+                                                $"Origem: {GetSourceDescription(evidence.SourceType)}")
+                                            .FontSize(9);
+
+                                        info.Item()
+                                            .PaddingTop(6)
+                                            .Text("SHA-256")
+                                            .Bold()
+                                            .FontSize(8);
+
+                                        info.Item()
+                                            .Text(FormatHash(evidence.Sha256))
+                                            .FontFamily(Fonts.CourierNew)
+                                            .FontSize(7);
+                                    });
+                            });
+                    }
+                });
+            }
             // ANEXO: IMAGENS
             var imageEvidences = model.Evidences.Where(e =>
                 e.EvidenceType.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
@@ -622,7 +770,11 @@ public static class PdfReportManager
                                     .FontSize(8);
 
                                 image.Item()
-                                    .Text($"Método de coleta: {evidence.CollectionMethod.Replace("_", " ")}")
+                                    .Text($"Método de coleta: {GetCollectionMethodDescription(evidence.CollectionMethod)}")
+                                    .FontSize(8);
+
+                                image.Item()
+                                    .Text($"Origem: {GetSourceDescription(evidence.SourceType)}")
                                     .FontSize(8);
 
                                 image.Item()
@@ -861,6 +1013,85 @@ public static class PdfReportManager
             .Text("IMG").FontSize(18).Bold().FontColor(Navy);
     }
 
+    private static string GetCollectionMethodDescription(
+        CollectionMethodType method)
+    {
+        return method switch
+        {
+            CollectionMethodType.FileImport =>
+                "Importação de arquivo",
+
+            CollectionMethodType.ScreenCapture =>
+                "Captura da tela",
+
+            CollectionMethodType.MonitorCapture =>
+                "Captura de monitor",
+
+            CollectionMethodType.AllMonitorsCapture =>
+                "Captura de todos os monitores",
+
+            CollectionMethodType.WindowCapture =>
+                "Captura de janela",
+
+            CollectionMethodType.Clipboard =>
+                "Área de transferência",
+
+            CollectionMethodType.Camera =>
+                "Captura por câmera",
+
+            CollectionMethodType.MobileExtraction =>
+                "Extração de dispositivo móvel",
+
+            CollectionMethodType.NetworkCapture =>
+                "Captura de rede",
+
+            CollectionMethodType.Manual =>
+                "Registro manual",
+
+            _ =>
+                "Não informado"
+        };
+    }
+
+    private static string GetSourceDescription(
+        EvidenceSourceType source)
+    {
+        return source switch
+        {
+            EvidenceSourceType.LocalDisk =>
+                "Disco local",
+
+            EvidenceSourceType.UsbDevice =>
+                "Dispositivo USB",
+
+            EvidenceSourceType.NetworkShare =>
+                "Compartilhamento de rede",
+
+            EvidenceSourceType.Screen =>
+                "Tela",
+
+            EvidenceSourceType.Window =>
+                "Janela",
+
+            EvidenceSourceType.Clipboard =>
+                "Área de transferência",
+
+            EvidenceSourceType.Camera =>
+                "Câmera",
+
+            EvidenceSourceType.MobileDevice =>
+                "Dispositivo móvel",
+
+            EvidenceSourceType.Internet =>
+                "Internet",
+
+            EvidenceSourceType.Other =>
+                "Outra origem",
+
+            _ =>
+                "Não informada"
+        };
+    }
     private static string FormatHash(string? hash)
             {
                 if (string.IsNullOrWhiteSpace(hash))

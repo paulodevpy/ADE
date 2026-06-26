@@ -9,6 +9,7 @@ using ADE.Core.Evidence;
 using ADE.Core.Security;
 using ADE.Core.Models;
 using ADE.Capture;
+using ADE.Reporting.Pdf;
 
 namespace ADE.UI;
 
@@ -59,6 +60,7 @@ public partial class CaptureOverlayWindow : Window
         {
             "SCREEN" => "Captura de Tela",
             "MONITOR" => $"Captura de Monitor {(monitorIndex ?? 0) + 1}",
+            "ALL_MONITORS" => "Captura de Todos os Monitores",
             "WINDOW" => "Captura de Janela",
             _ => "Captura"
         };
@@ -126,48 +128,101 @@ public partial class CaptureOverlayWindow : Window
 
     private void Capture_Click(object sender, RoutedEventArgs e)
     {
-        string evidencias = Path.Combine(_casePath, "evidencias");
+        string evidencias =
+            Path.Combine(_casePath, "evidencias");
+
+        Directory.CreateDirectory(evidencias);
+
         string arquivo = string.Empty;
 
         try
         {
-            this.Hide();
-            Thread.Sleep(200);
+            Hide();
+
+            Thread.Sleep(250);
 
             switch (_captureType)
             {
                 case "SCREEN":
-                    arquivo = ADE.Capture.ScreenCaptureManager.Capture(evidencias);
+
+                    arquivo =
+                        ScreenCaptureManager.Capture(
+                            evidencias);
+
                     break;
+
                 case "MONITOR":
-                    arquivo = ADE.Capture.ScreenCaptureManager.Capture(evidencias, _monitorIndex ?? 0);
+
+                    arquivo =
+                        ScreenCaptureManager.Capture(
+                            evidencias,
+                            _monitorIndex ?? 0);
+
                     break;
+
+                case "ALL_MONITORS":
+
+                    arquivo =
+                        ScreenCaptureManager.CaptureAllMonitors(
+                            evidencias);
+
+                    break;
+
                 case "WINDOW":
+
                     if (_windowHandle.HasValue)
-                        arquivo = ADE.Capture.WindowCaptureManager.Capture(_windowHandle.Value, evidencias);
+                    {
+                        arquivo =
+                            WindowCaptureManager.Capture(
+                                _windowHandle.Value,
+                                evidencias);
+                    }
+
                     break;
             }
 
-            if (!string.IsNullOrEmpty(arquivo))
-            {
-                var info = new FileInfo(arquivo);
-                var evidence = CreateEvidence(info, arquivo, "CAPTURE");
-                _onEvidenceCaptured?.Invoke(evidence);
-                _onStatusUpdate?.Invoke("CAPTURA REALIZADA".ToUpper());
+            if (string.IsNullOrWhiteSpace(arquivo))
+                return;
 
-                AuditService.AppendEvent(
-                    Path.Combine(_casePath, "logs", "audit.jsonl"),
-                    $"{_captureType}_CAPTURE",
-                    evidence.Sha256);
-            }
+            if (!File.Exists(arquivo))
+                throw new FileNotFoundException(
+                    "A captura foi concluída, porém o arquivo não foi localizado.",
+                    arquivo);
+
+            var info =
+                new FileInfo(arquivo);
+
+            var evidence =
+                CreateEvidence(
+                    info,
+                    arquivo,
+                    "CAPTURE");
+
+            _onEvidenceCaptured?.Invoke(evidence);
+
+            AuditService.AppendEvent(
+                Path.Combine(
+                    _casePath,
+                    "logs",
+                    "audit.jsonl"),
+                $"{_captureType}_CAPTURE",
+                evidence.Sha256);
+
+            _onStatusUpdate?.Invoke("CAPTURA REALIZADA");
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Erro ao capturar: {ex.Message}", "Erro");
+            MessageBox.Show(
+                ex.Message,
+                "Erro",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
         finally
         {
-            this.Show();
+            Show();
+
+            Activate();
         }
     }
 
@@ -186,6 +241,9 @@ public partial class CaptureOverlayWindow : Window
                     break;
                 case "MONITOR":
                     _videoCaptureManager.StartRecording(evidencias, "MONITOR", _monitorIndex ?? 0);
+                    break;
+                case "ALL_MONITORS":
+                    _videoCaptureManager.StartRecording(evidencias, "ALL_MONITORS");
                     break;
                 case "WINDOW":
                     if (_windowHandle.HasValue)
@@ -222,20 +280,67 @@ public partial class CaptureOverlayWindow : Window
         {
             if (_videoCaptureManager != null)
             {
-                string arquivo = _videoCaptureManager.StopRecording();
+                string arquivo =
+                    _videoCaptureManager.StopRecording();
 
-                if (!string.IsNullOrEmpty(arquivo) && File.Exists(arquivo))
+                if (!string.IsNullOrWhiteSpace(arquivo))
                 {
-                    var info = new FileInfo(arquivo);
-                    var evidence = CreateEvidence(info, arquivo, "VIDEO");
-                    _onEvidenceCaptured?.Invoke(evidence);
-                    _onStatusUpdate?.Invoke("VÍDEO GRAVADO".ToUpper());
+                    var limite =
+                        DateTime.UtcNow.AddSeconds(10);
 
-                    AuditService.AppendEvent(
-                        Path.Combine(_casePath, "logs", "audit.jsonl"),
-                        $"{_captureType}_VIDEO_STOP",
-                        evidence.Sha256);
-                }
+                    while (DateTime.UtcNow < limite)
+                    {
+                        if (File.Exists(arquivo))
+                        {
+                            try
+                            {
+                                using var fs =
+                                    new FileStream(
+                                        arquivo,
+                                        FileMode.Open,
+                                        FileAccess.Read,
+                                        FileShare.Read);
+
+                                if (fs.Length > 0)
+                                    break;
+                            }
+                            catch
+                            {
+                            }
+                        }
+
+                        Thread.Sleep(250);
+                    }
+
+                    if (File.Exists(arquivo))
+                    {
+                        var info =
+                            new FileInfo(arquivo);
+
+                        if (info.Length > 0)
+                        {
+                            var evidence =
+                                CreateEvidence(
+                                    info,
+                                    arquivo,
+                                    "VIDEO");
+
+                            _onEvidenceCaptured?.Invoke(
+                                evidence);
+
+                            _onStatusUpdate?.Invoke(
+                                "VÍDEO GRAVADO");
+
+                            AuditService.AppendEvent(
+                                Path.Combine(
+                                    _casePath,
+                                    "logs",
+                                    "audit.jsonl"),
+                                $"{_captureType}_VIDEO_STOP",
+                                evidence.Sha256);
+                            }
+                        }
+                    }
             }
 
             StartVideoButton.IsEnabled = true;
@@ -262,19 +367,72 @@ public partial class CaptureOverlayWindow : Window
     }
 
     private EvidenceFile CreateEvidence(FileInfo info, string arquivo, string methodSuffix)
-    {
+    {        
+        if (!File.Exists(info.FullName))
+            throw new FileNotFoundException(
+                info.FullName);
+
+        info.Refresh();
+
+        if (info.Length == 0)
+            throw new IOException(
+                "O vídeo ainda não foi finalizado pelo FFmpeg.");
+        var thumbnail =
+            new ThumbnailManager()
+                .Generate(info.FullName);
+
         return new EvidenceFile
         {
             FileName = info.Name,
             OriginalPath = arquivo,
             ImportedPath = arquivo,
             RelativePath = Path.Combine("evidencias", info.Name),
+            ThumbnailRelativePath = thumbnail,
             SizeBytes = info.Length,
             EvidenceType = info.Extension,
             Sha256 = IntegrityManager.CalculateSha256(arquivo),
             Sha512 = IntegrityManager.CalculateSha512(arquivo),
             CollectedAtUtc = DateTime.UtcNow,
-            CollectionMethod = $"{_captureType}_{methodSuffix}"
+            CollectionMethod =
+                _captureType switch
+                {
+                    "SCREEN" =>
+                        CollectionMethodType.ScreenCapture,
+
+                    "MONITOR" =>
+                        CollectionMethodType.MonitorCapture,
+
+                    "ALL_MONITORS" =>
+                        CollectionMethodType.AllMonitorsCapture,
+
+                    "WINDOW" =>
+                        CollectionMethodType.WindowCapture,
+
+                    _ =>
+                        CollectionMethodType.Unknown
+                },
+
+            SourceType =
+                _captureType switch
+                {
+                    "SCREEN" =>
+                        EvidenceSourceType.Screen,
+
+                    "MONITOR" =>
+                        EvidenceSourceType.Screen,
+
+                    "ALL_MONITORS" =>
+                        EvidenceSourceType.Screen,
+
+                    "WINDOW" =>
+                        EvidenceSourceType.Window,
+
+                    _ =>
+                        EvidenceSourceType.Unknown
+                },
+
+            SourceDescription =
+                _captureType,       
         };
     }
 

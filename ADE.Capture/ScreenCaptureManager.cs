@@ -41,36 +41,109 @@ public static class ScreenCaptureManager
         string destinationFolder,
         int monitorIndex = 0)
     {
+        Directory.CreateDirectory(destinationFolder);
+
         var screens =
             System.Windows.Forms.Screen.AllScreens;
 
-        if (monitorIndex >= screens.Length)
+        if (screens.Length == 0)
+            throw new InvalidOperationException(
+                "Nenhum monitor foi encontrado.");
+
+        if (monitorIndex < 0)
             monitorIndex = 0;
 
-        var bounds =
-            screens[monitorIndex]
-                .Bounds;
+        if (monitorIndex >= screens.Length)
+            monitorIndex = screens.Length - 1;
 
-        string fileName =
-            $"SCREEN_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+        var screen =
+            screens[monitorIndex];
+
+        var bounds =
+            screen.Bounds;
 
         string destination =
             Path.Combine(
                 destinationFolder,
-                fileName);
+                $"SCREEN_{DateTime.Now:yyyyMMdd_HHmmss}.png");
 
         using Bitmap bitmap =
             new(
                 bounds.Width,
-                bounds.Height);
+                bounds.Height,
+                PixelFormat.Format32bppArgb);
 
         using Graphics graphics =
             Graphics.FromImage(bitmap);
 
         graphics.CopyFromScreen(
-            bounds.Location,
-            Point.Empty,
-            bounds.Size);
+            bounds.Left,
+            bounds.Top,
+            0,
+            0,
+            bounds.Size,
+            CopyPixelOperation.SourceCopy);
+
+        bitmap.Save(
+            destination,
+            ImageFormat.Png);
+
+        return destination;
+    }
+
+    /// Captura todos os monitores combinados em uma única imagem.
+    public static string CaptureAllMonitors(
+        string destinationFolder)
+    {
+        Directory.CreateDirectory(destinationFolder);
+
+        var screens =
+            System.Windows.Forms.Screen.AllScreens;
+
+        if (screens.Length == 0)
+            throw new InvalidOperationException(
+                "Nenhum monitor foi encontrado.");
+
+        int left =
+            screens.Min(s => s.Bounds.Left);
+
+        int top =
+            screens.Min(s => s.Bounds.Top);
+
+        int right =
+            screens.Max(s => s.Bounds.Right);
+
+        int bottom =
+            screens.Max(s => s.Bounds.Bottom);
+
+        Rectangle virtualBounds =
+            new(
+                left,
+                top,
+                right - left,
+                bottom - top);
+
+        string destination =
+            Path.Combine(
+                destinationFolder,
+                $"SCREEN_ALL_{DateTime.Now:yyyyMMdd_HHmmss}.png");
+
+        using Bitmap bitmap =
+            new(
+                virtualBounds.Width,
+                virtualBounds.Height,
+                PixelFormat.Format32bppArgb);
+
+        using Graphics graphics =
+            Graphics.FromImage(bitmap);
+
+        graphics.CopyFromScreen(
+            virtualBounds.Left,
+            virtualBounds.Top,
+            0,
+            0,
+            virtualBounds.Size,
+            CopyPixelOperation.SourceCopy);
 
         bitmap.Save(
             destination,

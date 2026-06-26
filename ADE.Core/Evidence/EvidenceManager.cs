@@ -43,44 +43,81 @@ public class EvidenceManager
 
         var info =
             new FileInfo(destinationFile);
+       
 
         return new EvidenceFile
         {
             FileName = info.Name,
 
-            OriginalPath =
-                sourceFile,
+            OriginalPath = sourceFile,
 
-            ImportedPath =
-                destinationFile,
+            ImportedPath = destinationFile,
 
             RelativePath =
                 Path.Combine(
                     "evidencias",
                     info.Name),
 
-            SizeBytes =
-                info.Length,
+            ThumbnailRelativePath = "",
 
-            EvidenceType =
-                info.Extension,
+            SizeBytes = info.Length,
+
+            EvidenceType = info.Extension,
 
             Sha256 =
-                IntegrityManager
-                    .CalculateSha256(
-                        destinationFile),
+                IntegrityManager.CalculateSha256(
+                    destinationFile),
 
             Sha512 =
-                IntegrityManager
-                    .CalculateSha512(
-                        destinationFile),
+                IntegrityManager.CalculateSha512(
+                    destinationFile),
 
             CollectedAtUtc =
                 DateTime.UtcNow,
 
             CollectionMethod =
-                 "IMPORTAÇÃO"
+                CollectionMethodType.FileImport,
+
+            SourceType =
+                DetectSourceType(sourceFile),
+
+            SourceDescription =
+                sourceFile
         };
 
+    }
+    private static EvidenceSourceType DetectSourceType(
+        string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return EvidenceSourceType.Unknown;
+
+        string root =
+            Path.GetPathRoot(path)?.ToUpperInvariant() ?? "";
+
+        if (root.StartsWith(@"\\"))
+            return EvidenceSourceType.NetworkShare;
+
+        try
+        {
+            var drive =
+                new DriveInfo(root);
+
+            return drive.DriveType switch
+            {
+                DriveType.Removable =>
+                    EvidenceSourceType.UsbDevice,
+
+                DriveType.Network =>
+                    EvidenceSourceType.NetworkShare,
+
+                _ =>
+                    EvidenceSourceType.LocalDisk
+            };
+        }
+        catch
+        {
+            return EvidenceSourceType.LocalDisk;
+        }
     }
 }

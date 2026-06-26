@@ -25,6 +25,15 @@ public partial class SelectMonitorDialog : Window
         private set;
     }
 
+    /// <summary>
+    /// Indica se todos os monitores devem ser capturados combinados.
+    /// </summary>
+    public bool CaptureAllMonitors
+    {
+        get;
+        private set;
+    }
+
     private DispatcherTimer? _previewTimer;
 
     public SelectMonitorDialog()
@@ -46,9 +55,13 @@ public partial class SelectMonitorDialog : Window
         };
         _previewTimer.Tick += (s, e) => 
         {
-            if (MonitorListBox.SelectedItem is MonitorInfo selectedMonitor)
+            if (!CaptureAllMonitors && MonitorListBox.SelectedItem is MonitorInfo selectedMonitor)
             {
                 UpdatePreview(selectedMonitor);
+            }
+            else if (CaptureAllMonitors)
+            {
+                UpdateAllMonitorsPreview();
             }
         };
     }
@@ -71,6 +84,26 @@ public partial class SelectMonitorDialog : Window
         if (MonitorListBox.SelectedItem is MonitorInfo selectedMonitor)
         {
             SelectedMonitor = selectedMonitor;
+            if (!CaptureAllMonitors)
+            {
+                UpdatePreview(selectedMonitor);
+            }
+        }
+    }
+
+    private void AllMonitorsCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        CaptureAllMonitors = true;
+        MonitorListBox.IsEnabled = false;
+        UpdateAllMonitorsPreview();
+    }
+
+    private void AllMonitorsCheckBox_Unchecked(object sender, RoutedEventArgs e)
+    {
+        CaptureAllMonitors = false;
+        MonitorListBox.IsEnabled = true;
+        if (MonitorListBox.SelectedItem is MonitorInfo selectedMonitor)
+        {
             UpdatePreview(selectedMonitor);
         }
     }
@@ -81,6 +114,43 @@ public partial class SelectMonitorDialog : Window
         {
             // Criar captura temporária para preview
             string capturedFile = ScreenCaptureManager.Capture(Path.GetTempPath(), monitorInfo.Index);
+            
+            if (File.Exists(capturedFile))
+            {
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+                bitmap.UriSource = new Uri(capturedFile);
+                bitmap.EndInit();
+                bitmap.Freeze(); // Importante para permitir atualizações
+                
+                PreviewImage.Source = bitmap;
+                
+                // Limpar arquivo temporário após carregar
+                try
+                {
+                    File.Delete(capturedFile);
+                }
+                catch { }
+            }
+            else
+            {
+                PreviewImage.Source = null;
+            }
+        }
+        catch
+        {
+            PreviewImage.Source = null;
+        }
+    }
+
+    private void UpdateAllMonitorsPreview()
+    {
+        try
+        {
+            // Criar captura temporária para preview de todos os monitores
+            string capturedFile = ScreenCaptureManager.CaptureAllMonitors(Path.GetTempPath());
             
             if (File.Exists(capturedFile))
             {

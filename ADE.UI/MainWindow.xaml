@@ -2,6 +2,7 @@
         Icon="/Resources/ade.ico"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:ADE.UI"
         Title="ADE - Ata Digital de Evidências"
         Height="700"
         Width="1100"
@@ -14,6 +15,9 @@
 
 	<Window.Resources>
 		<DropShadowEffect x:Key="CardShadow" Color="#000000" Opacity="0.15" BlurRadius="20" ShadowDepth="5"/>
+		
+		<local:BooleanToStatusConverter x:Key="BoolToStatusConverter"/>
+		
 		<Style TargetType="Button">
 			<Setter Property="Cursor" Value="Hand"/>
 			<Setter Property="Template">
@@ -434,6 +438,19 @@
                                     FontFamily="Segoe UI"
                                     Cursor="Hand"/>
 
+							<Button Name="FinalizarColetaButton"
+                                    Height="40"
+                                    Margin="0,0,0,8"
+                                    Content="Finalizar Coleta"
+                                    Click="FinalizarColeta_Click"
+                                    Background="#F57C00"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    FontSize="13"
+                                    FontWeight="SemiBold"
+                                    FontFamily="Segoe UI"
+                                    Cursor="Hand"/>
+
 							<Button Name="GerarRelatorioButton"
                                     Height="40"
                                     Margin="0,0,0,8"
@@ -518,24 +535,26 @@
                                Margin="0,0,0,15"/>
 
 					<DataGrid Grid.Row="1"
-                              Name="EvidenceGrid"
-                              AutoGenerateColumns="False"
-                              FontSize="13"
-                              FontFamily="Segoe UI"
-                              GridLinesVisibility="Horizontal"
-                              HeadersVisibility="Column"
-                              AlternatingRowBackground="#F8FAFC"
-                              RowBackground="White"
-                              BorderBrush="#E2E8F0"
-                              BorderThickness="2"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Auto"
-                              MinWidth="400"
-                              MinHeight="200"
-                              CanUserResizeColumns="True"
-                              CanUserReorderColumns="False"
-                              SelectionMode="Single"
-                              IsReadOnly="True">
+                                Name="EvidenceGrid"
+                                AutoGenerateColumns="False"
+                                RowHeight="34"
+                                MinRowHeight="34"
+                                FontSize="13"
+                                FontFamily="Segoe UI"
+                                GridLinesVisibility="Horizontal"
+                                HeadersVisibility="Column"
+                                AlternatingRowBackground="#F8FAFC"
+                                RowBackground="White"
+                                BorderBrush="#E2E8F0"
+                                BorderThickness="2"
+                                VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Auto"
+                                MinWidth="400"
+                                MinHeight="200"
+                                CanUserResizeColumns="True"
+                                CanUserReorderColumns="False"
+                                SelectionMode="Single"
+                                IsReadOnly="True">
 
 						<DataGrid.Columns>
 
@@ -574,9 +593,51 @@
                                 MinWidth="200"
                                 IsReadOnly="True"/>
 
-						</DataGrid.Columns>
+							<DataGridTextColumn
+                                Header="Status"
+                                Binding="{Binding IsDeleted, Converter={StaticResource BoolToStatusConverter}}"
+                                Width="Auto"
+                                MinWidth="80"
+                                IsReadOnly="True"/>
 
-					</DataGrid>
+							                            <DataGridTemplateColumn
+                                Header="Ações"
+                                Width="110"
+                                MinWidth="110"
+                                CanUserResize="False">
+
+                                <DataGridTemplateColumn.CellTemplate>
+
+                                    <DataTemplate>
+
+                                        <Grid HorizontalAlignment="Center">
+
+                                            <Button
+                                                Width="72"
+                                                Height="26"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Padding="0"
+                                                Margin="2"
+                                                Content="Excluir"
+                                                FontSize="10"
+                                                FontWeight="SemiBold"
+                                                Background="#D32F2F"
+                                                Foreground="White"
+                                                BorderThickness="0"
+                                                Click="DeleteEvidence_Click"/>
+
+                                        </Grid>
+
+                                    </DataTemplate>
+
+                                </DataGridTemplateColumn.CellTemplate>
+
+                            </DataGridTemplateColumn>
+
+                        </DataGrid.Columns>
+
+                    </DataGrid>
 
 				</Grid>
 

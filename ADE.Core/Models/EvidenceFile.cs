@@ -9,7 +9,7 @@ public class EvidenceFile
     public string ImportedPath { get; set; } = string.Empty;
 
     public string RelativePath { get; set; } = string.Empty;
-
+    public string ThumbnailRelativePath { get; set; } = "";
     public string EvidenceType { get; set; } = string.Empty;
 
     public long SizeBytes { get; set; }
@@ -20,9 +20,21 @@ public class EvidenceFile
 
     public DateTime CollectedAtUtc { get; set; }
 
-    public string CollectionMethod { get; set; }
-        = "IMPORTAÇÃO";
+    public CollectionMethodType CollectionMethod { get; set; }
+        = CollectionMethodType.Unknown;
 
-    public string SourceDescription { get; set; }
-        = "";
+    public EvidenceSourceType SourceType { get; set; }
+        = EvidenceSourceType.Unknown;
+
+    public string SourceDescription { get; set; } = "";
+
+    /// <summary>
+    /// Indica se o arquivo foi excluído durante a coleta
+    /// </summary>
+    public bool IsDeleted { get; set; } = false;
+
+    /// <summary>
+    /// Data e hora da exclusão (se aplicável)
+    /// </summary>
+    public DateTime? DeletedAtUtc { get; set; }
 }

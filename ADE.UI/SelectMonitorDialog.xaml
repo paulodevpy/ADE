@@ -26,11 +26,21 @@
                    Margin="0,0,0,10"
                    Text="Selecione o monitor para captura:"/>
 
-        <ListBox
-            Grid.Row="1"
-            Name="MonitorListBox" 
-            DisplayMemberPath="Label"
-            SelectionChanged="MonitorListBox_SelectionChanged"/>
+        <StackPanel Grid.Row="1" Grid.Column="0">
+            <CheckBox 
+                Name="AllMonitorsCheckBox" 
+                Content="Capturar todos os monitores combinados"
+                Margin="0,0,0,10"
+                Checked="AllMonitorsCheckBox_Checked"
+                Unchecked="AllMonitorsCheckBox_Unchecked"/>
+            
+            <ListBox
+                Name="MonitorListBox" 
+                DisplayMemberPath="Label"
+                SelectionChanged="MonitorListBox_SelectionChanged"
+                SelectionMode="Single"
+                Height="200"/>
+        </StackPanel>
 
         <Border Grid.Row="1" 
                 Grid.Column="1" 
